@@ -4,7 +4,7 @@ from flask import Flask, jsonify, request
 
 app = Flask(__name__)
 
-# Dizionario dei campionati richiesti mappati con i codici ufficiali del feed di ESPN
+# Mappa corretta dei campionati con i codici del feed di ESPN
 LEGHES_ESPN = {
     "serie-a": "ita.1",
     "serie-b": "ita.2",
@@ -22,11 +22,9 @@ LEGHES_ESPN = {
 
 @app.route('/risultati', methods=['GET'])
 def get_soccer_scores():
-    # Legge la lega dall'URL (es: /risultati?lega=serie-b). Se omesso mostra la Serie A.
     lega_scelta = request.args.get('lega', 'serie-a')
     codice_espn = LEGHES_ESPN.get(lega_scelta, "ita.1")
     
-    # Endpoint pubblico globale di ESPN: senza scadenze, token o blocchi
     url = f"https://espn.com{codice_espn}/scoreboard"
     
     try:
@@ -35,28 +33,24 @@ def get_soccer_scores():
         
         partite_elaborate = []
         
-        # ESPN organizza i match della giornata dentro la lista "events"
         for event in dati.get("events", []):
-            competition_info = event["competitions"]
+            competition_info = event["competitions"][0]
             competitors = competition_info["competitors"]
             
-            # Identifichiamo la squadra in casa e quella ospite
             casa = next(t for t in competitors if t["homeAway"] == "home")
             ospiti = next(t for t in competitors if t["homeAway"] == "away")
             
-            # Estraiamo gli eventi live del match (gol, ammoniti, espulsi, rigori)
             dettagli_eventi = competition_info.get("details", [])
             
-            # Estraiamo le formazioni ufficiali se già caricate nel sistema
             formazione_casa = [p["player"]["displayName"] for p in casa.get("lineup", [])]
             formazione_ospiti = [p["player"]["displayName"] for p in ospiti.get("lineup", [])]
             
             info = {
                 "id_partita": event.get("id"),
                 "campionato": lega_scelta.upper(),
-                "data_orario_utc": event.get("date"), # Orario di inizio del match
-                "stato_testo": event["status"]["type"]["shortDetail"], # Es: "1H 25'" o "Finale"
-                "fase_partita": event["status"]["type"]["name"], # STATUS_SCHEDULED, STATUS_IN_PROGRESS, STATUS_FINAL
+                "data_orario_utc": event.get("date"),
+                "stato_testo": event["status"]["type"]["shortDetail"],
+                "fase_partita": event["status"]["type"]["name"],
                 "casa": {
                     "nome": casa["team"]["displayName"],
                     "logo": casa["team"].get("logo"),
@@ -69,7 +63,6 @@ def get_soccer_scores():
                     "gol": ospiti.get("score", "0"),
                     "formazione": formazione_ospiti if len(formazione_ospiti) > 0 else "Non ancora disponibile"
                 },
-                # In questo elenco ESPN inserisce i marcatori con minuto ed espulsioni
                 "cronologia_live": dettagli_eventi
             }
             partite_elaborate.append(info)
@@ -83,9 +76,7 @@ def get_soccer_scores():
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
 
-# Assicura compatibilità con Vercel Serverless
 app = app
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)
-
